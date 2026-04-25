@@ -6,6 +6,7 @@ import {
   normalizeLogLevel,
   shouldLog,
 } from "./logger";
+import { requestContext } from "./requestContext";
 
 describe("logger", () => {
   afterEach(() => {
@@ -100,4 +101,57 @@ describe("logger", () => {
     expect(shouldLog("error", "warn")).toBe(true);
     expect(shouldLog("info", "warn")).toBe(false);
   });
+
+  // ── AsyncLocalStorage context injection ──────────────────────────────────────
+
+  it("automatically injects requestId from the async context when no field is provided", () => {
+    const CONTEXT_ID = "ctx-auto-injected-id";
+
+    let line!: string;
+    requestContext.run({ requestId: CONTEXT_ID }, () => {
+      line = createLogLine(
+        "info",
+        "service_action",
+        { detail: "something happened" },
+        new Date("2026-04-22T20:00:00.000Z"),
+      );
+    });
+
+    const payload = JSON.parse(line);
+    expect(payload.requestId).toBe(CONTEXT_ID);
+    expect(payload.detail).toBe("something happened");
+  });
+
+  it("lets an explicit requestId field override the async context value", () => {
+    const CONTEXT_ID = "ctx-id-that-should-be-overridden";
+    const EXPLICIT_ID = "explicit-caller-supplied-id";
+
+    let line!: string;
+    requestContext.run({ requestId: CONTEXT_ID }, () => {
+      line = createLogLine(
+        "warn",
+        "audit_event",
+        { requestId: EXPLICIT_ID, reason: "caller-supplied wins" },
+        new Date("2026-04-22T20:00:00.000Z"),
+      );
+    });
+
+    const payload = JSON.parse(line);
+    expect(payload.requestId).toBe(EXPLICIT_ID);
+  });
+
+  it("omits requestId from log lines when called outside of any request context", () => {
+    // Simulate startup logging (no AsyncLocalStorage context active).
+    const line = createLogLine(
+      "info",
+      "server_started",
+      { port: 3000 },
+      new Date("2026-04-22T20:00:00.000Z"),
+    );
+
+    const payload = JSON.parse(line);
+    expect(payload.requestId).toBeUndefined();
+    expect(payload.port).toBe(3000);
+  });
 });
+

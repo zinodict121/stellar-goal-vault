@@ -27,6 +27,7 @@ beforeAll(async () => {
   ({ parseCampaignListFilters } = await import("./index"));
 
   ({ getDb } = await import("./services/db"));
+  ({ listCampaigns, createCampaign, addPledge, calculateProgress, initCampaignStore } = await import("./services/campaignStore"));
   initCampaignStore();
 }, 20000);
 

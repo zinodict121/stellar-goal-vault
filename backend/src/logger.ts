@@ -1,3 +1,5 @@
+import { getRequestId } from "./requestContext";
+
 export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 
 export type LogLevel = (typeof LOG_LEVELS)[number];
@@ -26,10 +28,17 @@ export function createLogLine(
   fields: LogFields,
   now: Date = new Date(),
 ): string {
+  // Pull the request ID from the async context so that every log line emitted
+  // within a request lifecycle automatically carries it — without any caller
+  // needing to pass `req` into service or utility code.
+  // An explicit `requestId` field in `fields` always takes precedence.
+  const contextRequestId = getRequestId();
+
   return JSON.stringify({
     timestamp: now.toISOString(),
     level,
     event,
+    ...(contextRequestId !== undefined ? { requestId: contextRequestId } : {}),
     ...fields,
   });
 }

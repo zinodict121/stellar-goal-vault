@@ -1,7 +1,6 @@
 import cors from "cors";
 import "dotenv/config";
 import express, { Request, Response } from "express";
-import { randomUUID } from "crypto";
 import { z } from "zod";
 import { config, walletIntegrationReady } from "./config";
 import {
@@ -38,12 +37,7 @@ import {
   zodIssuesToValidationIssues,
 } from "./validation/schemas";
 import { logError, logInfo, logRequest } from "./logger";
-
-export const app = express();
-
-interface RequestWithId extends Request {
-  requestId?: string;
-}
+import { requestIdMiddleware, RequestWithId } from "./middleware/requestId";
 
 import { CampaignRecord, CampaignProgress } from "./services/campaignStore";
 type CampaignListItem = CampaignRecord & { progress: CampaignProgress };
@@ -54,6 +48,8 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = 120;
 const WRITE_RATE_LIMIT_MAX_REQUESTS = 40;
 
+
+export const app = express();
 
 app.use(
   cors({
@@ -98,8 +94,13 @@ function applyRateLimit(maxRequests: number) {
 
 app.use(applyRateLimit(RATE_LIMIT_MAX_REQUESTS));
 
+// ── Request ID & access logging ───────────────────────────────────────────────
+// requestIdMiddleware must come AFTER applyRateLimit so that rate-limit errors
+// still emit a request ID, but BEFORE any route handler so the AsyncLocalStorage
+// context is in scope for the full downstream call chain.
+app.use(requestIdMiddleware);
+
 app.use((req: RequestWithId, res: Response, next: express.NextFunction) => {
-  req.requestId = randomUUID();
   const startedAt = process.hrtime.bigint();
 
   res.on("finish", () => {
@@ -119,6 +120,7 @@ app.use((req: RequestWithId, res: Response, next: express.NextFunction) => {
 
   next();
 });
+// ─────────────────────────────────────────────────────────────────────────────
 
 function sendValidationError(issues: z.ZodIssue[]): never {
   throw new AppError(
